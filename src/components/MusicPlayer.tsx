@@ -50,6 +50,20 @@ export default function MusicPlayer() {
     };
   }, [hasInteracted]);
 
+  // Pause background music if playlist music starts playing
+  useEffect(() => {
+    const handleStopBg = () => {
+      if (audioRef.current && isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
+    window.addEventListener("stop-bg-music", handleStopBg);
+    return () => {
+      window.removeEventListener("stop-bg-music", handleStopBg);
+    };
+  }, [isPlaying]);
+
   const togglePlay = () => {
     if (!audioRef.current) return;
     
@@ -57,6 +71,9 @@ export default function MusicPlayer() {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      // Pause any active playlist music
+      window.dispatchEvent(new CustomEvent("stop-playlist-music"));
+      
       audioRef.current.play()
         .then(() => {
           setIsPlaying(true);

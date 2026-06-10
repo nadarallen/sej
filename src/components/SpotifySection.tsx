@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
-import { Music, ArrowUpRight, RotateCw, Volume2, Play } from "lucide-react";
+import { Music, ArrowUpRight, RotateCw, Volume2, Play, Pause } from "lucide-react";
 
 interface Track {
   id: number;
@@ -10,6 +10,7 @@ interface Track {
   artist: string;
   duration: string;
   spotifyId: string;
+  url: string;
   note: string;
 }
 
@@ -20,6 +21,7 @@ const tracks: Track[] = [
     artist: "Forest Blakk",
     duration: "3:51",
     spotifyId: "727Z2S2mtNH46CbP9EWPwY",
+    url: "/songs/track1.mp3",
     note: "A gentle reminder of what it means to hold onto love with everything you have."
   },
   {
@@ -28,6 +30,7 @@ const tracks: Track[] = [
     artist: "Christina Perri",
     duration: "4:45",
     spotifyId: "6lanRgr6wXibZr8KgzXxBl",
+    url: "/songs/track2.mp3",
     note: "Some connections feel like they have existed for lifetimes. A promise of forever."
   },
   {
@@ -36,6 +39,7 @@ const tracks: Track[] = [
     artist: "Ed Sheeran",
     duration: "4:18",
     spotifyId: "1HNkqx9Ahdgi1Ixy2xkKkL",
+    url: "/songs/track3.mp3",
     note: "We keep these moments in photographs, making time stand still so we never grow apart."
   },
   {
@@ -44,6 +48,7 @@ const tracks: Track[] = [
     artist: "Rex Orange County",
     duration: "4:21",
     spotifyId: "3rPtS4nfpy7PsARctAWpzd",
+    url: "/songs/track4.mp3",
     note: "Because you are, and always will be, my favorite person to share everything with."
   },
   {
@@ -52,6 +57,7 @@ const tracks: Track[] = [
     artist: "Pritam & Arijit Singh",
     duration: "4:03",
     spotifyId: "6FjbAnaPRPwiP3sciEYctO",
+    url: "/songs/track5.mp3",
     note: "An unspoken bond, a connection that feels destined and perfectly written."
   },
   {
@@ -60,6 +66,7 @@ const tracks: Track[] = [
     artist: "Pritam & Arijit Singh",
     duration: "3:39",
     spotifyId: "068HSvCf5MbQfhV4qqaelg",
+    url: "/songs/track6.mp3",
     note: "For the playful, chaotic moments where we just laugh and let things be imperfectly perfect."
   },
   {
@@ -68,6 +75,7 @@ const tracks: Track[] = [
     artist: "Harris Jayaraj & Naresh Iyer",
     duration: "5:10",
     spotifyId: "1n5gnI3Wue9WBpYFOIQNh1",
+    url: "/songs/track7.mp3",
     note: "A sweet, nostalgic melody that brings back the butterflies of the early days."
   },
   {
@@ -76,19 +84,69 @@ const tracks: Track[] = [
     artist: "G.V. Prakash Kumar & S.P. Balasubrahmanyam",
     duration: "5:24",
     spotifyId: "5DYfTyqUNBmOnQtljQjYk2",
+    url: "/songs/track8.mp3",
     note: "A soulful tune that captures the quiet depth of feeling when words are not enough."
   }
 ];
 
 export default function SpotifySection() {
   const sectionRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
   const [activeTrackIndex, setActiveTrackIndex] = useState(0);
+  const [isCurrentlyPlaying, setIsCurrentlyPlaying] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Sync play/pause audio actions on track index and isCurrentlyPlaying state changes
+  useEffect(() => {
+    if (!audioRef.current || !isMounted) return;
+
+    const playAudio = () => {
+      // Pause background ambient music first
+      window.dispatchEvent(new CustomEvent("stop-bg-music"));
+      audioRef.current?.play()
+        .then(() => setIsCurrentlyPlaying(true))
+        .catch((err) => {
+          console.log("Turntable play failed: ", err);
+          setIsCurrentlyPlaying(false);
+        });
+    };
+
+    if (isCurrentlyPlaying) {
+      playAudio();
+    } else {
+      audioRef.current.pause();
+    }
+  }, [activeTrackIndex, isCurrentlyPlaying, isMounted]);
+
+  // Pause local turntable music if main background music starts playing
+  useEffect(() => {
+    const handleStopPlaylist = () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        setIsCurrentlyPlaying(false);
+      }
+    };
+    window.addEventListener("stop-playlist-music", handleStopPlaylist);
+    return () => {
+      window.removeEventListener("stop-playlist-music", handleStopPlaylist);
+    };
+  }, []);
+
+  // Handle auto-advancing to the next song when one ends
+  const handleEnded = () => {
+    if (activeTrackIndex < tracks.length - 1) {
+      setActiveTrackIndex((prev) => prev + 1);
+      setIsCurrentlyPlaying(true);
+    } else {
+      setIsCurrentlyPlaying(false);
+    }
+  };
 
   // Scroll tracking for vinyl reveal parallax
   const { scrollYProgress } = useScroll({
@@ -102,13 +160,26 @@ export default function SpotifySection() {
 
   // Vinyl slide out: slides out from behind sleeve as section enters viewport
   const recordX = useTransform(scrollYProgress, [0.15, 0.45], [0, 115]);
-  // Needle/tonearm rotates onto record as it slides out
-  const tonearmRotate = useTransform(scrollYProgress, [0.25, 0.5], [-50, 8]);
 
   const playlistUrl = "https://open.spotify.com/playlist/0DKAGhhnwKJ6mkoucXqUcd?si=qoSEtPNTSOWSz946hoT2Cw&pi=OAAqniTwTPqWC";
   const embedUrl = "https://open.spotify.com/embed/playlist/0DKAGhhnwKJ6mkoucXqUcd?utm_source=generator&theme=0";
 
   const activeTrack = tracks[activeTrackIndex];
+
+  // Track select / play toggle handler
+  const handleTrackClick = (index: number) => {
+    if (activeTrackIndex === index) {
+      setIsCurrentlyPlaying(!isCurrentlyPlaying);
+    } else {
+      // Force source reload for the new track
+      if (audioRef.current) {
+        audioRef.current.src = tracks[index].url;
+        audioRef.current.load();
+      }
+      setActiveTrackIndex(index);
+      setIsCurrentlyPlaying(true);
+    }
+  };
 
   return (
     <section
@@ -139,7 +210,7 @@ export default function SpotifySection() {
               return (
                 <button
                   key={track.id}
-                  onClick={() => setActiveTrackIndex(index)}
+                  onClick={() => handleTrackClick(index)}
                   className={`group relative w-full flex items-center justify-between text-left p-3.5 rounded-xl border transition-all duration-500 cursor-pointer ${
                     isActive
                       ? "bg-white text-black border-white shadow-lg shadow-white/5"
@@ -164,10 +235,10 @@ export default function SpotifySection() {
                     {isActive ? (
                       // Active mini audio waves visualizer
                       <div className="flex items-end gap-[2px] h-3 w-4.5 pb-[2px]" aria-hidden="true">
-                        <div className="w-[2px] h-full bg-black rounded-full animate-sound-wave-bar origin-bottom" style={{ animationDelay: "0.1s" }} />
-                        <div className="w-[2px] h-full bg-black rounded-full animate-sound-wave-bar origin-bottom" style={{ animationDelay: "0.3s" }} />
-                        <div className="w-[2px] h-full bg-black rounded-full animate-sound-wave-bar origin-bottom" style={{ animationDelay: "0.5s" }} />
-                        <div className="w-[2px] h-full bg-black rounded-full animate-sound-wave-bar origin-bottom" style={{ animationDelay: "0.2s" }} />
+                        <div className={`w-[2px] h-full bg-black rounded-full origin-bottom ${isCurrentlyPlaying ? "animate-sound-wave-bar" : "h-[25%]"}`} style={{ animationDelay: "0.1s" }} />
+                        <div className={`w-[2px] h-full bg-black rounded-full origin-bottom ${isCurrentlyPlaying ? "animate-sound-wave-bar" : "h-[50%]"}`} style={{ animationDelay: "0.3s" }} />
+                        <div className={`w-[2px] h-full bg-black rounded-full origin-bottom ${isCurrentlyPlaying ? "animate-sound-wave-bar" : "h-[75%]"}`} style={{ animationDelay: "0.5s" }} />
+                        <div className={`w-[2px] h-full bg-black rounded-full origin-bottom ${isCurrentlyPlaying ? "animate-sound-wave-bar" : "h-[40%]"}`} style={{ animationDelay: "0.2s" }} />
                       </div>
                     ) : (
                       <>
@@ -223,7 +294,7 @@ export default function SpotifySection() {
                 {/* Turntable Top bar */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shadow-md shadow-red-500/50" />
+                    <span className={`w-1.5 h-1.5 rounded-full shadow-md ${isCurrentlyPlaying ? "bg-green-500 shadow-green-500/50 animate-pulse" : "bg-red-500 shadow-red-500/50"}`} />
                     <span className="text-[7px] font-accent uppercase text-neutral-400 tracking-wider">
                       Side A // Analog Turntable
                     </span>
@@ -235,16 +306,23 @@ export default function SpotifySection() {
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-950/80 hover:bg-neutral-100 hover:text-black text-neutral-400 border border-neutral-850 hover:border-white rounded-full text-[7px] font-accent uppercase tracking-wider transition-all duration-300 cursor-pointer"
                   >
                     <RotateCw size={8} />
-                    <span>Load Live Player</span>
+                    <span>Load Spotify Widget</span>
                   </button>
                 </div>
 
                 {/* Main Deck Area with Record & Sleeve */}
                 <div className="relative w-full h-56 flex items-center justify-start mt-4 px-2">
                   
+                  {/* Local HTML5 Audio Tag */}
+                  <audio
+                    ref={audioRef}
+                    src={activeTrack.url}
+                    onEnded={handleEnded}
+                  />
+
                   {/* Vinyl Record (slides out) */}
                   <motion.div
-                    className="absolute w-44 h-44 rounded-full shadow-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center animate-spin-slow z-10"
+                    className={`absolute w-44 h-44 rounded-full shadow-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center z-10 ${isCurrentlyPlaying ? "animate-spin-slow" : ""}`}
                     style={{
                       x: recordX,
                       background: "repeating-radial-gradient(circle, #000, #000 4px, #181818 5px, #000 6px)"
@@ -263,8 +341,8 @@ export default function SpotifySection() {
                       <span className="text-[4px] font-accent tracking-widest text-neutral-500 mt-1 leading-none uppercase text-center w-full">
                         Side A
                       </span>
-                      <span className="text-[4px] font-light font-mono text-neutral-400 mt-0.5 scale-90">
-                        RPM 33
+                      <span className="text-[4px] font-light font-mono text-neutral-400 mt-0.5 scale-90 text-center w-full truncate px-1">
+                        Track {activeTrackIndex + 1}
                       </span>
                       {/* Spindle hole */}
                       <div className="w-2.5 h-2.5 rounded-full bg-neutral-950 border border-neutral-800 absolute top-[43%] left-[41%] shadow-inner" />
@@ -297,11 +375,11 @@ export default function SpotifySection() {
                     </div>
                   </div>
 
-                  {/* Turntable Tonearm / Needle (rotates onto the vinyl) */}
+                  {/* Turntable Tonearm / Needle (rotates onto the vinyl when playing) */}
                   <motion.div
-                    style={{ rotate: tonearmRotate }}
+                    animate={{ rotate: isCurrentlyPlaying ? 8 : -45 }}
                     className="absolute top-1 right-8 w-24 h-28 origin-top-right z-30 pointer-events-none"
-                    transition={{ type: "spring", stiffness: 40, damping: 12 }}
+                    transition={{ type: "spring", stiffness: 45, damping: 12 }}
                   >
                     {/* Metal arm line */}
                     <svg width="100%" height="100%" viewBox="0 0 100 120" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -322,9 +400,21 @@ export default function SpotifySection() {
 
                 {/* LCD Digital Dashboard screen */}
                 <div className="w-full bg-neutral-950/80 border border-neutral-900 rounded-xl p-3.5 font-mono text-[9px] text-neutral-400 flex flex-col gap-1 mt-auto">
-                  <div className="flex justify-between border-b border-neutral-900/60 pb-1">
-                    <span className="text-neutral-500">SYSTEM STATE:</span>
-                    <span className="text-neutral-300 animate-pulse">PLAYING // ONLINE</span>
+                  <div className="flex justify-between border-b border-neutral-900/60 pb-1.5 items-center">
+                    <div className="flex items-center gap-1">
+                      <span className="text-neutral-500">SYSTEM STATE:</span>
+                      <span className={`text-[8px] font-bold ${isCurrentlyPlaying ? "text-green-500 animate-pulse" : "text-neutral-400"}`}>
+                        {isCurrentlyPlaying ? "PLAYING // ONLINE" : "PAUSED // READY"}
+                      </span>
+                    </div>
+                    {/* Integrated play/pause button on deck */}
+                    <button
+                      onClick={() => setIsCurrentlyPlaying(!isCurrentlyPlaying)}
+                      className="p-1 rounded bg-neutral-900 hover:bg-neutral-100 hover:text-black text-neutral-400 border border-neutral-850 hover:border-white transition-all cursor-pointer flex items-center justify-center w-5 h-5 shrink-0"
+                      aria-label={isCurrentlyPlaying ? "Pause turntable" : "Play turntable"}
+                    >
+                      {isCurrentlyPlaying ? <Pause size={9} /> : <Play size={9} />}
+                    </button>
                   </div>
                   <div className="flex justify-between pt-1">
                     <span className="text-neutral-500">ACTIVE TRACK:</span>
@@ -341,9 +431,9 @@ export default function SpotifySection() {
                   <div className="flex justify-between items-center mt-1 pt-1.5 border-t border-neutral-900/60 text-[8px] text-neutral-500">
                     <span className="flex items-center gap-1">
                       <Volume2 size={9} />
-                      AUDIO ROUTE: DECK_OUT
+                      AUDIO ROUTE: {isCurrentlyPlaying ? "DECK_OUT" : "STANDBY"}
                     </span>
-                    <span>33 1/3 RPM</span>
+                    <span>{isCurrentlyPlaying ? "33 1/3 RPM" : "0 RPM"}</span>
                   </div>
                 </div>
 
